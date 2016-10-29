@@ -15,6 +15,11 @@ setup(
         'escherauth',
     ],
     zip_safe=False,
+    tests_requires=[
+        'nose==1.3.3',
+        'nose-parametereized==0.3.4',
+    ],
+    test_suite = 'nose.collector',
     install_requires=[
         'requests>=1.2.3,<3.0.0'
     ],
