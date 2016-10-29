@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 from setuptools import setup
 
+_DESC = 'Python implementation of the AWS4 compatible Escher HTTP request ' + \
+        'signing protocol.'
+
 setup(
     name='escherauth',
-    description='Python implementation of the AWS4 compatible Escher HTTP request signing protocol.',
+    description=_DESC,
     version='0.2.5',
     author='Andras Barthazi',
     author_email='andras@barthazi.hu',
@@ -19,10 +22,10 @@ setup(
         'nose==1.3.3',
         'nose-parametereized==0.3.4',
     ],
-    test_suite = 'nose.collector',
-    install_requires=[
-        'requests>=1.2.3,<3.0.0'
-    ],
+    test_suite='nose.collector',
+    extra_requires={
+        'requests': ['requests>=1.2.3,<3.0.0'],
+    },
     classifiers=[
         'Development Status :: 4 - Beta',
         'Environment :: Console',
