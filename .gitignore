@@ -9,4 +9,5 @@
 .idea
 .tox
 .coverage
+venv*
 
