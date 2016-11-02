@@ -1,88 +1,18 @@
+from __future__ import absolute_import
+
 import datetime
 import hmac
-import requests
-import urllib
 import re
 
 from hashlib import sha256, sha512
 
 try:
-    from urlparse import urlparse, parse_qsl, urljoin
     from urllib import quote
 except:
-    from urllib.parse import urlparse, parse_qsl, urljoin, quote
+    from urllib.parse import quote
 
 
-class EscherRequestsAuth(requests.auth.AuthBase):
-    def __init__(self, credential_scope, options, client):
-        self.escher = Escher(credential_scope, options)
-        self.client = client
-
-    def __call__(self, request):
-        return self.escher.sign(request, self.client)
-
-
-class EscherRequest():
-    _uri_regex = re.compile('([^?#]*)(\?(.*))?')
-
-    def __init__(self, request):
-        self.type = type(request)
-        self.request = request
-        self.prepare_request_uri()
-
-    def request(self):
-        return self.request
-
-    def prepare_request_uri(self):
-        if self.type is requests.models.PreparedRequest:
-            self.request_uri = self.request.path_url
-        if self.type is dict:
-            self.request_uri = self.request['uri']
-        match = re.match(self._uri_regex, self.request_uri)
-        self.uri_path = match.group(1)
-        self.uri_query = match.group(3)
-
-    def method(self):
-        if self.type is requests.models.PreparedRequest:
-            return self.request.method
-        if self.type is dict:
-            return self.request['method']
-
-    def host(self):
-        if self.type is requests.models.PreparedRequest:
-            return self.request.host
-        if self.type is dict:
-            return self.request['host']
-
-    def path(self):
-        return self.uri_path
-
-    def query_parts(self):
-        return parse_qsl((self.uri_query or '').replace(';', '%3b'), True)
-
-    def headers(self):
-        if self.type is requests.models.PreparedRequest:
-            headers = []
-            for key, value in self.request.headers.iteritems():
-                headers.append([key, value])
-            return headers
-        if self.type is dict:
-            return self.request['headers']
-
-    def body(self):
-        if self.type is requests.models.PreparedRequest:
-            return self.request.body or ''
-        if self.type is dict:
-            return self.request.get('body', '')
-
-    def add_header(self, header, value):
-        if self.type is requests.models.PreparedRequest:
-            self.request.headers[header] = value
-        if self.type is dict:
-            self.request['headers'].append((header, value))
-
-
-class Escher:
+class EscherAuth(object):
     _normalize_path = re.compile('([^/]+/\.\./?|/\./|//|/\.$|/\.\.$)')
 
     def __init__(self, credential_scope, options={}):
@@ -90,27 +20,51 @@ class Escher:
         self.algo_prefix = options.get('algo_prefix', 'ESR')
         self.vendor_key = options.get('vendor_key', 'Escher')
         self.hash_algo = options.get('hash_algo', 'SHA256')
-        self.current_time = options.get('current_time', datetime.datetime.utcnow())
-        self.auth_header_name = options.get('auth_header_name', 'X-Escher-Auth')
-        self.date_header_name = options.get('date_header_name', 'X-Escher-Date')
+        self.current_time = options.get(
+            'current_time',
+            datetime.datetime.utcnow()
+        )
+        self.auth_header_name = options.get(
+            'auth_header_name',
+            'X-Escher-Auth'
+        )
+        self.date_header_name = options.get(
+            'date_header_name',
+            'X-Escher-Date'
+        )
         self.clock_skew = options.get('clock_skew', 300)
         self.algo = self.create_algo()
         self.algo_id = self.algo_prefix + '-HMAC-' + self.hash_algo
 
-    def sign(self, r, client, headers_to_sign=[]):
-        request = EscherRequest(r)
-
+    def sign(self, request, client, headers_to_sign=[]):
         for header in [self.date_header_name.lower(), 'host']:
             if header not in headers_to_sign:
                 headers_to_sign.append(header)
 
-        signature = self.generate_signature(client['api_secret'], request, headers_to_sign)
-        request.add_header(self.auth_header_name, ", ".join([
-            self.algo_id + ' Credential=' + client['api_key'] + '/' + self.short_date(
-                self.current_time) + '/' + self.credential_scope,
-            'SignedHeaders=' + self.prepare_headers_to_sign(headers_to_sign),
-            'Signature=' + signature
-        ]))
+        signature = self.generate_signature(
+            client['api_secret'],
+            request,
+            headers_to_sign
+        )
+
+        header_fmt = (
+            '{algorithm} ' +
+            'Credential={api_key}/{date_stamp}/{scope}' +
+            ', SignedHeaders={signed_headers}' +
+            ', Signature={signature}'
+        )
+
+        header = header_fmt.format(
+            algorithm=self.algo_id,
+            api_key=client['api_key'],
+            date_stamp=self.short_date(self.current_time),
+            scope=self.credential_scope,
+            signed_headers=self.prepare_headers_to_sign(headers_to_sign),
+            signature=signature,
+        )
+
+        request.set_header(self.auth_header_name, header)
+
         return request.request
 
     def hmac_digest(self, key, message, is_hex=False):
@@ -125,7 +79,11 @@ class Escher:
         canonicalized_request = self.canonicalize(req, headers_to_sign)
         string_to_sign = self.get_string_to_sign(canonicalized_request)
 
-        signing_key = self.hmac_digest(self.algo_prefix + api_secret, self.short_date(self.current_time))
+        signing_key = self.hmac_digest(
+            self.algo_prefix + api_secret,
+            self.short_date(self.current_time)
+        )
+
         for data in self.credential_scope.split('/'):
             signing_key = self.hmac_digest(signing_key, data)
 
@@ -135,7 +93,7 @@ class Escher:
         return "\n".join([
             req.method(),
             self.canonicalize_path(req.path()),
-            self.canonicalize_query(req.query_parts()),
+            self.canonicalize_query(req.query()),
             self.canonicalize_headers(req.headers(), headers_to_sign),
             '',
             self.prepare_headers_to_sign(headers_to_sign),
@@ -150,9 +108,12 @@ class Escher:
 
     def canonicalize_headers(self, headers, headers_to_sign):
         headers_list = []
-        for key, value in iter(sorted(headers)):
+
+        for key in iter(sorted(headers.keys())):
             if key.lower() in headers_to_sign:
-                headers_list.append(key.lower() + ':' + self.normalize_white_spaces(value))
+                normalized = self.normalize_white_spaces(headers[key])
+                headers_list.append(key.lower() + ':' + normalized)
+
         return "\n".join(sorted(headers_list))
 
     def normalize_white_spaces(self, value):
@@ -169,8 +130,12 @@ class Escher:
     def canonicalize_query(self, query_parts):
         safe = "~+!'()*"
         query_list = []
+
         for key, value in query_parts:
-            query_list.append(quote(key, safe=safe) + '=' + quote(value, safe=safe))
+            quoted_key = quote(key, safe=safe)
+            quoted_value = quote(value, safe=safe)
+            query_list.append(quoted_key + '=' + quoted_value)
+
         return "&".join(sorted(query_list))
 
     def get_string_to_sign(self, canonicalized_request):

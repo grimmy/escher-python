@@ -1,11 +1,11 @@
 import unittest
 
-from escherauth.escherauth import EscherRequest
+from escherauth.dict import EscherRequestDict
 
 
 class EscherRequestTest(unittest.TestCase):
     def test_object_basic(self):
-        request = EscherRequest({
+        request = EscherRequestDict({
             'method': 'GET',
             'host': 'host.foo.com',
             'uri': '/?foo=bar',
@@ -17,7 +17,7 @@ class EscherRequestTest(unittest.TestCase):
         self.assertEqual(request.method(), 'GET')
         self.assertEqual(request.host(), 'host.foo.com')
         self.assertEqual(request.path(), '/')
-        self.assertListEqual(request.query_parts(), [
+        self.assertListEqual(request.query(), [
             ('foo', 'bar'),
         ])
         self.assertListEqual(request.headers(), [
@@ -27,30 +27,31 @@ class EscherRequestTest(unittest.TestCase):
         self.assertEqual(request.body(), '')  # there was no body specified
 
     def test_object_complex(self):
-        request = EscherRequest({
+        request = EscherRequestDict({
             'method': 'POST',
             'host': 'host.foo.com',
             'uri': '/example/path/?foo=bar&abc=cba',
-            'headers': [],
+            'headers': {},
             'body': 'HELLO WORLD!',
         })
         self.assertEqual(request.method(), 'POST')
         self.assertEqual(request.host(), 'host.foo.com')
         self.assertEqual(request.path(), '/example/path/')
-        self.assertListEqual(request.query_parts(), [
+        print(request.query())
+        self.assertListEqual(request.query(), [
             ('foo', 'bar'),
             ('abc', 'cba'),
         ])
-        self.assertListEqual(request.headers(), [])
+        self.assertDictEqual(request.headers(), {})
         self.assertEqual(request.body(), 'HELLO WORLD!')
 
-    def test_object_add_header(self):
-        request = EscherRequest({
+    def test_object_set_header(self):
+        request = EscherRequestDict({
             'method': 'POST',
             'host': 'host.foo.com',
             'uri': '/example/path/?foo=bar&abc=cba',
-            'headers': [],
+            'headers': {},
             'body': 'HELLO WORLD!',
         })
-        request.add_header('Foo', 'Bar')
-        self.assertListEqual(request.headers(), [('Foo', 'Bar')])
+        request.set_header('Foo', 'Bar')
+        self.assertDictEqual(request.headers(), {'Foo': 'Bar'})

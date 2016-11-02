@@ -1,8 +1,10 @@
-import unittest
 import datetime
+import unittest
 
-from escherauth.escherauth import Escher
 from nose_parameterized import parameterized
+
+from escherauth.auth import EscherAuth
+from escherauth.dict import EscherRequestDict
 
 
 def read_request(suite, test, extension='req'):
@@ -11,24 +13,24 @@ def read_request(suite, test, extension='req'):
     file.close()
 
     method, uri = lines[0].split(' ')[0:2]
-    headers = []
+    headers = {}
     for header in lines[1:-2]:
         key, value = header.split(':', 1)
-        headers.append((key, value.lstrip()))
+        headers[key] = value.lstrip()
     body = lines[-1]
 
-    return {
+    return EscherRequestDict({
         'method': method,
         'host': 'host.foo.com',
         'uri': uri,
         'headers': headers,
         'body': body,
-    }
+    })
 
 
 class EscherAuthAmazonTest(unittest.TestCase):
     def setUp(self):
-        self.escher = Escher('us-east-1/host/aws4_request', {
+        self.escher = EscherAuth('us-east-1/host/aws4_request', {
             'algo_prefix': 'AWS4',
             'vendor_key': 'AWS4',
             'hash_algo': 'SHA256',
@@ -68,16 +70,21 @@ class EscherAuthAmazonTest(unittest.TestCase):
         ('post-x-www-form-urlencoded-parameters'),
     ])
     def test_signing(self, testcase):
+        self.maxDiff = None
+
         suite = 'aws4'
         request = read_request(suite, testcase)
         request_signed = read_request(suite, testcase, 'sreq')
-        headers_to_sign = [header[0].lower() for header in request['headers']]
+        headers_to_sign = [x.lower() for x in request.headers().keys()]
         request = self.escher.sign(request, {
             'api_key': 'AKIDEXAMPLE',
             'api_secret': 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY'
         }, headers_to_sign)
-        self.assertEqual(request.get('method'), request_signed.get('method'))
-        self.assertEqual(request.get('host'), request_signed.get('host'))
-        self.assertEqual(request.get('uri'), request_signed.get('uri'))
-        self.assertListEqual(request.get('headers'), request_signed.get('headers'))
-        self.assertEqual(request.get('body'), request_signed.get('body'))
+        self.assertEqual(request.get('method'), request_signed.method())
+        self.assertEqual(request.get('host'), request_signed.host())
+        self.assertEqual(request.get('uri'), request_signed.request_uri())
+        self.assertDictEqual(
+            request.get('headers'),
+            request_signed.headers(),
+        )
+        self.assertEqual(request.get('body'), request_signed.body())
